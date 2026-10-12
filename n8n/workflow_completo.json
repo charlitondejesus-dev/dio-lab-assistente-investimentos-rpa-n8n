@@ -1,0 +1,383 @@
+{
+  "name": "Completo - Assistente de Investimentos (LLM + Gmail)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clientes",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c80f895b-c944-4851-b14f-ecccdeb1a98e",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "0aa8b911-84a0-40f7-91de-5fed5beee42e"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://charlitondejesus-dev.github.io/dio-lab-assistente-investimentos-rpa-n8n/investimentos.csv",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "13357516-8140-4fa8-a9ad-29205993c60e",
+      "name": "Buscar CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const texto = $input.first().json.data || '';\nconst linhas = texto.split(/\\r?\\n/).filter(l => l.trim() !== '');\nconst cabecalho = linhas.shift().split(',').map(c => c.trim().toLowerCase());\n\nreturn linhas.map(linha => {\n  const valores = linha.split(',').map(v => v.trim());\n  const reg = {};\n  cabecalho.forEach((c, i) => { reg[c] = valores[i]; });\n  return { json: {\n    perfil: reg.perfil,\n    produto: reg.produto,\n    minimo: Number(reg.minimo),\n    rentabilidade: Number(reg.rentabilidade)\n  }};\n});"
+      },
+      "id": "3467bf2b-bc2b-4565-8483-51be972f4c61",
+      "name": "Normalizar CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "791f60a4-ce94-403e-8a1a-72613c4a87c0",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Separa os itens que vieram do webhook e os produtos do CSV\nconst itens = $input.all().map(i => i.json);\nconst origem = itens.find(i => i.body && Array.isArray(i.body.clientes));\nconst clientes = origem ? origem.body.clientes : [];\nconst produtos = itens.filter(i => i.produto);\n\nconst moeda = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });\nconst estilos = ['amigavel', 'objetivo', 'consultivo'];\n\n// Tres modelos fixos, alternados entre os clientes para nao repetir o texto\nconst modelos = [\n  (c, p) => `Ola, ${c.nome}! Com o perfil ${c.perfil} e saldo de ${moeda(c.saldo)}, uma opcao para voce conhecer e ${p.produto}, com aplicacao minima de ${moeda(p.minimo)} e rentabilidade de referencia de ${p.rentabilidade}% ao ano.`,\n  (c, p) => `${c.nome}, separamos uma sugestao alinhada ao seu perfil ${c.perfil}: ${p.produto}. Entrada a partir de ${moeda(p.minimo)}; rentabilidade de referencia de ${p.rentabilidade}% ao ano.`,\n  (c, p) => `Prezado(a) ${c.nome}, avaliando seu saldo de ${moeda(c.saldo)}, o produto ${p.produto} se encaixa no perfil ${c.perfil}. Minimo de ${moeda(p.minimo)} e rentabilidade de referencia de ${p.rentabilidade}% ao ano.`\n];\nconst aviso = ' Rentabilidade passada nao garante resultados futuros.';\n\nreturn clientes.map((c, idx) => {\n  const perfil = String(c.perfil || '').trim().toLowerCase();\n  const saldo = Number(c.saldo) || 0;\n  const candidatos = produtos.filter(p => String(p.perfil).toLowerCase() === perfil);\n  // Escolhe o produto de maior rentabilidade que o saldo permite\n  const elegiveis = candidatos.filter(p => saldo >= p.minimo)\n                              .sort((a, b) => b.rentabilidade - a.rentabilidade);\n  const produto = elegiveis[0];\n\n  let mensagem;\n  if (!produto) {\n    const menor = candidatos.sort((a, b) => a.minimo - b.minimo)[0];\n    mensagem = menor\n      ? `Ola, ${c.nome}! Seu saldo atual ainda esta abaixo do minimo de ${moeda(menor.minimo)} para ${menor.produto}. Quando for possivel, vale reavaliar.`\n      : `Ola, ${c.nome}! Ainda nao ha produto cadastrado para o perfil ${c.perfil}.`;\n  } else {\n    mensagem = modelos[idx % modelos.length](c, produto) + aviso;\n  }\n\n  return { json: {\n    nome: c.nome,\n    email: c.email,\n    saldo,\n    perfil: c.perfil,\n    produto: produto ? produto.produto : null,\n    minimo: produto ? produto.minimo : null,\n    rentabilidade: produto ? produto.rentabilidade : null,\n    estilo: estilos[idx % estilos.length],\n    mensagem_estatica: mensagem\n  }};\n});"
+      },
+      "id": "3a8267ff-0e0e-4cda-9efa-e04d4cbda4fa",
+      "name": "Gerar mensagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "99b590fc-baa2-4f6b-8b77-6551ec4a9d6b",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "39b3fa86-31a7-4a91-8d56-60da81ac950a",
+      "name": "Validar e-mail",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.9, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: \"Voce e um assistente de comunicacao de uma corretora. Escreva em portugues brasileiro, com tom profissional e cordial. Nunca prometa ou garanta ganhos. Inclua sempre um aviso curto de que rentabilidade passada nao garante resultados futuros. Responda somente com JSON valido contendo as chaves assunto e corpo_html (HTML simples com paragrafos).\" }, { role: 'user', content: 'Escreva um e-mail curto para o cliente abaixo, sem prometer ganhos. Nome: ' + $json.nome + '. Perfil: ' + $json.perfil + '. Saldo: R$ ' + $json.saldo + '. Produto sugerido: ' + $json.produto + ' (minimo R$ ' + $json.minimo + ', rentabilidade de referencia ' + $json.rentabilidade + '% ao ano). Estilo de escrita: ' + $json.estilo + '. Se o produto for nulo, apenas oriente o cliente a reavaliar quando o saldo permitir.' }] }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "67e29d41-3f68-4022-9c22-9cece934f999",
+      "name": "Gerar e-mail (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const base = $('Validar e-mail').item.json;\nlet conteudo = {};\ntry {\n  conteudo = JSON.parse($json.choices[0].message.content);\n} catch (e) {\n  conteudo = {};\n}\nreturn { json: {\n  to: base.email,\n  nome: base.nome,\n  subject: conteudo.assunto || 'Uma sugestao de investimento para o seu perfil',\n  html: conteudo.corpo_html || `<p>${base.mensagem_estatica}</p>`,\n  origem_texto: conteudo.corpo_html ? 'llm' : 'fallback_estatico'\n}};"
+      },
+      "id": "312c1786-c9c8-4845-9e0d-7d78255fa4fa",
+      "name": "Normalizar e-mail LLM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "190e8c0e-dad0-416c-91e3-c8eab7b66d9b",
+      "name": "Enviar Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1920,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: { ...$json, status: 'email_invalido' } };"
+      },
+      "id": "0856889d-5e16-4c13-91dd-31d991193a59",
+      "name": "Registrar invalido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "10d601a8-2f75-415c-ba06-73cba3331b99",
+      "name": "Merge resultados",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const itens = $input.all().map(i => i.json);\nconst enviados = itens.filter(i => i.id && i.threadId).length;\nconst falhasEnvio = itens.filter(i => i.error).length;\nconst invalidos = itens.filter(i => i.status === 'email_invalido').map(i => i.nome);\nreturn [{ json: {\n  status: 'concluido',\n  total: itens.length,\n  enviados,\n  falhas_envio: falhasEnvio,\n  emails_invalidos: invalidos\n}}];"
+      },
+      "id": "df7258fe-77a2-4972-be34-3cd3b81188d6",
+      "name": "Resumo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "2eae9693-258f-4705-894a-df5eee61095d",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Buscar CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar CSV": {
+      "main": [
+        [
+          {
+            "node": "Normalizar CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar CSV": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Gerar mensagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar mensagens": {
+      "main": [
+        [
+          {
+            "node": "Validar e-mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar e-mail": {
+      "main": [
+        [
+          {
+            "node": "Gerar e-mail (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar e-mail (LLM)": {
+      "main": [
+        [
+          {
+            "node": "Normalizar e-mail LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar e-mail LLM": {
+      "main": [
+        [
+          {
+            "node": "Enviar Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Gmail": {
+      "main": [
+        [
+          {
+            "node": "Merge resultados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar invalido": {
+      "main": [
+        [
+          {
+            "node": "Merge resultados",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge resultados": {
+      "main": [
+        [
+          {
+            "node": "Resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumo": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

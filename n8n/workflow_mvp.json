@@ -1,0 +1,167 @@
+{
+  "name": "MVP - Assistente de Investimentos (mensagens estaticas)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clientes",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c80f895b-c944-4851-b14f-ecccdeb1a98e",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "0aa8b911-84a0-40f7-91de-5fed5beee42e"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://charlitondejesus-dev.github.io/dio-lab-assistente-investimentos-rpa-n8n/investimentos.csv",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "13357516-8140-4fa8-a9ad-29205993c60e",
+      "name": "Buscar CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const texto = $input.first().json.data || '';\nconst linhas = texto.split(/\\r?\\n/).filter(l => l.trim() !== '');\nconst cabecalho = linhas.shift().split(',').map(c => c.trim().toLowerCase());\n\nreturn linhas.map(linha => {\n  const valores = linha.split(',').map(v => v.trim());\n  const reg = {};\n  cabecalho.forEach((c, i) => { reg[c] = valores[i]; });\n  return { json: {\n    perfil: reg.perfil,\n    produto: reg.produto,\n    minimo: Number(reg.minimo),\n    rentabilidade: Number(reg.rentabilidade)\n  }};\n});"
+      },
+      "id": "3467bf2b-bc2b-4565-8483-51be972f4c61",
+      "name": "Normalizar CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "791f60a4-ce94-403e-8a1a-72613c4a87c0",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Separa os itens que vieram do webhook e os produtos do CSV\nconst itens = $input.all().map(i => i.json);\nconst origem = itens.find(i => i.body && Array.isArray(i.body.clientes));\nconst clientes = origem ? origem.body.clientes : [];\nconst produtos = itens.filter(i => i.produto);\n\nconst moeda = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });\nconst estilos = ['amigavel', 'objetivo', 'consultivo'];\n\n// Tres modelos fixos, alternados entre os clientes para nao repetir o texto\nconst modelos = [\n  (c, p) => `Ola, ${c.nome}! Com o perfil ${c.perfil} e saldo de ${moeda(c.saldo)}, uma opcao para voce conhecer e ${p.produto}, com aplicacao minima de ${moeda(p.minimo)} e rentabilidade de referencia de ${p.rentabilidade}% ao ano.`,\n  (c, p) => `${c.nome}, separamos uma sugestao alinhada ao seu perfil ${c.perfil}: ${p.produto}. Entrada a partir de ${moeda(p.minimo)}; rentabilidade de referencia de ${p.rentabilidade}% ao ano.`,\n  (c, p) => `Prezado(a) ${c.nome}, avaliando seu saldo de ${moeda(c.saldo)}, o produto ${p.produto} se encaixa no perfil ${c.perfil}. Minimo de ${moeda(p.minimo)} e rentabilidade de referencia de ${p.rentabilidade}% ao ano.`\n];\nconst aviso = ' Rentabilidade passada nao garante resultados futuros.';\n\nreturn clientes.map((c, idx) => {\n  const perfil = String(c.perfil || '').trim().toLowerCase();\n  const saldo = Number(c.saldo) || 0;\n  const candidatos = produtos.filter(p => String(p.perfil).toLowerCase() === perfil);\n  // Escolhe o produto de maior rentabilidade que o saldo permite\n  const elegiveis = candidatos.filter(p => saldo >= p.minimo)\n                              .sort((a, b) => b.rentabilidade - a.rentabilidade);\n  const produto = elegiveis[0];\n\n  let mensagem;\n  if (!produto) {\n    const menor = candidatos.sort((a, b) => a.minimo - b.minimo)[0];\n    mensagem = menor\n      ? `Ola, ${c.nome}! Seu saldo atual ainda esta abaixo do minimo de ${moeda(menor.minimo)} para ${menor.produto}. Quando for possivel, vale reavaliar.`\n      : `Ola, ${c.nome}! Ainda nao ha produto cadastrado para o perfil ${c.perfil}.`;\n  } else {\n    mensagem = modelos[idx % modelos.length](c, produto) + aviso;\n  }\n\n  return { json: {\n    nome: c.nome,\n    email: c.email,\n    saldo,\n    perfil: c.perfil,\n    produto: produto ? produto.produto : null,\n    minimo: produto ? produto.minimo : null,\n    rentabilidade: produto ? produto.rentabilidade : null,\n    estilo: estilos[idx % estilos.length],\n    mensagem_estatica: mensagem\n  }};\n});"
+      },
+      "id": "3a8267ff-0e0e-4cda-9efa-e04d4cbda4fa",
+      "name": "Gerar mensagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "7eba3c26-0b73-4ff3-b50f-91d20426d794",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Buscar CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar CSV": {
+      "main": [
+        [
+          {
+            "node": "Normalizar CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar CSV": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Gerar mensagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar mensagens": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
