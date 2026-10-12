@@ -1,0 +1,11 @@
+ROTEIRO DA DEMONSTRACAO (cerca de 3 a 4 minutos, gravar a tela)
+
+1. Repositorio forkado e GitHub Pages ativo: mostrar a pagina de clientes aberta no navegador e o investimentos.csv.
+2. Google Colab com o notebook rpa_clientes.ipynb aberto. Mostrar as duas URLs configuradas.
+3. n8n, workflow MVP: clicar em "Listen for test event" no Webhook.
+4. Executar o notebook. Voltar ao n8n e clicar em cada no, mostrando a saida:
+   Webhook (clientes recebidos), Buscar CSV (texto), Normalizar CSV (tabela), Merge, Gerar mensagens (mensagem por cliente).
+5. Mostrar no Colab a resposta retornada pelo n8n.
+6. Abrir o workflow completo. Explicar os nos novos: Validar e-mail, Gerar e-mail (LLM), Normalizar e-mail LLM, Enviar Gmail, Resumo.
+7. Executar de novo e mostrar que cada e-mail ficou diferente e que o cliente com e-mail invalido caiu no ramo falso.
+8. Mostrar o resumo final (enviados, falhas, emails_invalidos) e, se possivel, um e-mail recebido no Gmail.
