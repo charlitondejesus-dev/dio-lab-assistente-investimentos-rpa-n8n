@@ -1,5 +1,5 @@
 {
-  "name": "Completo - Assistente de Investimentos (LLM + Gmail)",
+  "name": "Completo - Assistente de Investimentos (Gemini + Gmail)",
   "nodes": [
     {
       "parameters": {
@@ -8,7 +8,7 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "c80f895b-c944-4851-b14f-ecccdeb1a98e",
+      "id": "9eeece13-ea85-4743-870c-4a02d3235e40",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,7 +16,7 @@
         0,
         300
       ],
-      "webhookId": "0aa8b911-84a0-40f7-91de-5fed5beee42e"
+      "webhookId": "d3038e82-158e-4a5c-aae9-b1b24dbc006b"
     },
     {
       "parameters": {
@@ -31,7 +31,7 @@
           }
         }
       },
-      "id": "13357516-8140-4fa8-a9ad-29205993c60e",
+      "id": "175a23e5-b1a8-4aae-89a6-c0d22f85d683",
       "name": "Buscar CSV",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -45,7 +45,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const texto = $input.first().json.data || '';\nconst linhas = texto.split(/\\r?\\n/).filter(l => l.trim() !== '');\nconst cabecalho = linhas.shift().split(',').map(c => c.trim().toLowerCase());\n\nreturn linhas.map(linha => {\n  const valores = linha.split(',').map(v => v.trim());\n  const reg = {};\n  cabecalho.forEach((c, i) => { reg[c] = valores[i]; });\n  return { json: {\n    perfil: reg.perfil,\n    produto: reg.produto,\n    minimo: Number(reg.minimo),\n    rentabilidade: Number(reg.rentabilidade)\n  }};\n});"
       },
-      "id": "3467bf2b-bc2b-4565-8483-51be972f4c61",
+      "id": "aa852b3c-5fce-46b8-83fc-4ef4abfc15dc",
       "name": "Normalizar CSV",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -58,7 +58,7 @@
       "parameters": {
         "mode": "append"
       },
-      "id": "791f60a4-ce94-403e-8a1a-72613c4a87c0",
+      "id": "49c67e93-2131-457b-8882-4ee03a2cd19d",
       "name": "Merge",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
@@ -72,7 +72,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "// Separa os itens que vieram do webhook e os produtos do CSV\nconst itens = $input.all().map(i => i.json);\nconst origem = itens.find(i => i.body && Array.isArray(i.body.clientes));\nconst clientes = origem ? origem.body.clientes : [];\nconst produtos = itens.filter(i => i.produto);\n\nconst moeda = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });\nconst estilos = ['amigavel', 'objetivo', 'consultivo'];\n\n// Tres modelos fixos, alternados entre os clientes para nao repetir o texto\nconst modelos = [\n  (c, p) => `Ola, ${c.nome}! Com o perfil ${c.perfil} e saldo de ${moeda(c.saldo)}, uma opcao para voce conhecer e ${p.produto}, com aplicacao minima de ${moeda(p.minimo)} e rentabilidade de referencia de ${p.rentabilidade}% ao ano.`,\n  (c, p) => `${c.nome}, separamos uma sugestao alinhada ao seu perfil ${c.perfil}: ${p.produto}. Entrada a partir de ${moeda(p.minimo)}; rentabilidade de referencia de ${p.rentabilidade}% ao ano.`,\n  (c, p) => `Prezado(a) ${c.nome}, avaliando seu saldo de ${moeda(c.saldo)}, o produto ${p.produto} se encaixa no perfil ${c.perfil}. Minimo de ${moeda(p.minimo)} e rentabilidade de referencia de ${p.rentabilidade}% ao ano.`\n];\nconst aviso = ' Rentabilidade passada nao garante resultados futuros.';\n\nreturn clientes.map((c, idx) => {\n  const perfil = String(c.perfil || '').trim().toLowerCase();\n  const saldo = Number(c.saldo) || 0;\n  const candidatos = produtos.filter(p => String(p.perfil).toLowerCase() === perfil);\n  // Escolhe o produto de maior rentabilidade que o saldo permite\n  const elegiveis = candidatos.filter(p => saldo >= p.minimo)\n                              .sort((a, b) => b.rentabilidade - a.rentabilidade);\n  const produto = elegiveis[0];\n\n  let mensagem;\n  if (!produto) {\n    const menor = candidatos.sort((a, b) => a.minimo - b.minimo)[0];\n    mensagem = menor\n      ? `Ola, ${c.nome}! Seu saldo atual ainda esta abaixo do minimo de ${moeda(menor.minimo)} para ${menor.produto}. Quando for possivel, vale reavaliar.`\n      : `Ola, ${c.nome}! Ainda nao ha produto cadastrado para o perfil ${c.perfil}.`;\n  } else {\n    mensagem = modelos[idx % modelos.length](c, produto) + aviso;\n  }\n\n  return { json: {\n    nome: c.nome,\n    email: c.email,\n    saldo,\n    perfil: c.perfil,\n    produto: produto ? produto.produto : null,\n    minimo: produto ? produto.minimo : null,\n    rentabilidade: produto ? produto.rentabilidade : null,\n    estilo: estilos[idx % estilos.length],\n    mensagem_estatica: mensagem\n  }};\n});"
       },
-      "id": "3a8267ff-0e0e-4cda-9efa-e04d4cbda4fa",
+      "id": "14174f5f-c120-4fd6-b689-742dd75c0dbc",
       "name": "Gerar mensagens",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -91,7 +91,7 @@
           },
           "conditions": [
             {
-              "id": "99b590fc-baa2-4f6b-8b77-6551ec4a9d6b",
+              "id": "c16c726a-80cd-46cc-9361-339fa7b626ee",
               "leftValue": "={{ $json.email }}",
               "rightValue": "/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/",
               "operator": {
@@ -104,7 +104,7 @@
         },
         "options": {}
       },
-      "id": "39b3fa86-31a7-4a91-8d56-60da81ac950a",
+      "id": "52d06ac6-51b2-4c71-a8a9-436e2d4af730",
       "name": "Validar e-mail",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -116,17 +116,23 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.9, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: \"Voce e um assistente de comunicacao de uma corretora. Escreva em portugues brasileiro, com tom profissional e cordial. Nunca prometa ou garanta ganhos. Inclua sempre um aviso curto de que rentabilidade passada nao garante resultados futuros. Responda somente com JSON valido contendo as chaves assunto e corpo_html (HTML simples com paragrafos).\" }, { role: 'user', content: 'Escreva um e-mail curto para o cliente abaixo, sem prometer ganhos. Nome: ' + $json.nome + '. Perfil: ' + $json.perfil + '. Saldo: R$ ' + $json.saldo + '. Produto sugerido: ' + $json.produto + ' (minimo R$ ' + $json.minimo + ', rentabilidade de referencia ' + $json.rentabilidade + '% ao ano). Estilo de escrita: ' + $json.estilo + '. Se o produto for nulo, apenas oriente o cliente a reavaliar quando o saldo permitir.' }] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: \"Voce e um assistente de comunicacao de uma corretora. Escreva em portugues brasileiro, com tom profissional e cordial. Nunca prometa ou garanta ganhos. Inclua sempre um aviso curto de que rentabilidade passada nao garante resultados futuros. Responda somente com JSON valido contendo as chaves assunto e corpo_html (HTML simples com paragrafos).\" }] }, contents: [{ role: 'user', parts: [{ text: 'Escreva um e-mail curto para o cliente abaixo, sem prometer ganhos. Nome: ' + $json.nome + '. Perfil: ' + $json.perfil + '. Saldo: R$ ' + $json.saldo + '. Produto sugerido: ' + $json.produto + ' (minimo R$ ' + $json.minimo + ', rentabilidade de referencia ' + $json.rentabilidade + '% ao ano). Estilo de escrita: ' + $json.estilo + '. Se o produto for nulo, apenas oriente o cliente a reavaliar quando o saldo permitir.' }] }], generationConfig: { temperature: 0.9, responseMimeType: 'application/json' } }) }}",
         "options": {
-          "timeout": 60000
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 15000
+            }
+          }
         }
       },
-      "id": "67e29d41-3f68-4022-9c22-9cece934f999",
+      "id": "90b63e26-04bf-493b-8002-3c053f9c3a8f",
       "name": "Gerar e-mail (LLM)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -135,15 +141,16 @@
         200
       ],
       "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 2000
+      "maxTries": 4,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const base = $('Validar e-mail').item.json;\nlet conteudo = {};\ntry {\n  conteudo = JSON.parse($json.choices[0].message.content);\n} catch (e) {\n  conteudo = {};\n}\nreturn { json: {\n  to: base.email,\n  nome: base.nome,\n  subject: conteudo.assunto || 'Uma sugestao de investimento para o seu perfil',\n  html: conteudo.corpo_html || `<p>${base.mensagem_estatica}</p>`,\n  origem_texto: conteudo.corpo_html ? 'llm' : 'fallback_estatico'\n}};"
+        "jsCode": "const base = $('Validar e-mail').item.json;\nlet conteudo = {};\ntry {\n  conteudo = JSON.parse($json.candidates[0].content.parts[0].text);\n} catch (e) {\n  conteudo = {};\n}\nreturn { json: {\n  to: base.email,\n  nome: base.nome,\n  subject: conteudo.assunto || 'Uma sugestao de investimento para o seu perfil',\n  html: conteudo.corpo_html || `<p>${base.mensagem_estatica}</p>`,\n  origem_texto: conteudo.corpo_html ? 'llm' : 'fallback_estatico'\n}};"
       },
-      "id": "312c1786-c9c8-4845-9e0d-7d78255fa4fa",
+      "id": "b8c5cb02-ebb9-49fb-8640-7162c5e0f271",
       "name": "Normalizar e-mail LLM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -162,7 +169,7 @@
         "message": "={{ $json.html }}",
         "options": {}
       },
-      "id": "190e8c0e-dad0-416c-91e3-c8eab7b66d9b",
+      "id": "a90a3f58-3131-4a2e-ae46-a3e2e0af23ac",
       "name": "Enviar Gmail",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
@@ -177,7 +184,7 @@
         "mode": "runOnceForEachItem",
         "jsCode": "return { json: { ...$json, status: 'email_invalido' } };"
       },
-      "id": "0856889d-5e16-4c13-91dd-31d991193a59",
+      "id": "17effc65-3cce-4882-980d-563ea60820cd",
       "name": "Registrar invalido",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -190,7 +197,7 @@
       "parameters": {
         "mode": "append"
       },
-      "id": "10d601a8-2f75-415c-ba06-73cba3331b99",
+      "id": "f9d78d96-bc54-4cd0-b7d3-8293dd50ea6c",
       "name": "Merge resultados",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
@@ -204,7 +211,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "const itens = $input.all().map(i => i.json);\nconst enviados = itens.filter(i => i.id && i.threadId).length;\nconst falhasEnvio = itens.filter(i => i.error).length;\nconst invalidos = itens.filter(i => i.status === 'email_invalido').map(i => i.nome);\nreturn [{ json: {\n  status: 'concluido',\n  total: itens.length,\n  enviados,\n  falhas_envio: falhasEnvio,\n  emails_invalidos: invalidos\n}}];"
       },
-      "id": "df7258fe-77a2-4972-be34-3cd3b81188d6",
+      "id": "a71623f4-9378-403e-a7c0-ddf72be574c3",
       "name": "Resumo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -220,7 +227,7 @@
           "responseCode": 200
         }
       },
-      "id": "2eae9693-258f-4705-894a-df5eee61095d",
+      "id": "4d100a4a-d877-4053-a801-97a232cc9e9a",
       "name": "Responder Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
